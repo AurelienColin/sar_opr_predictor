@@ -298,8 +298,7 @@ class OPRInference:
 
     @LazyProperty
     def vh_nesz_out(self) -> np.ndarray:
-        clip_value = CONFIG.nesz_clip
-        return np.round(np.minimum(self.vh_nice_display ** 2, clip_value)) * (2 ** 16 - 1) / clip_value
+        return np.clip(self.vh_nesz_in * 50 * 2 ** 16, 0, 2 ** 16 - 1)
 
     @LazyProperty
     def mask(self) -> np.ndarray:
