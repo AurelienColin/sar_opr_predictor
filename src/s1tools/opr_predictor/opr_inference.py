@@ -289,17 +289,17 @@ class OPRInference:
     @LazyProperty
     def vv_ssr(self) -> np.ndarray:
         clip_value = CONFIG.vv_clip
-        return np.round(np.minimum(self.vv_nice_display ** 2, clip_value)) * (2 ** 16 - 1) / clip_value
+        return np.round(np.minimum(self.vv_nice_display ** 2, clip_value) * (2 ** 16 - 1) / clip_value)
 
     @LazyProperty
     def vh_ssr(self) -> np.ndarray:
         clip_value = CONFIG.vh_clip
-        return np.round(np.minimum(self.vh_nice_display ** 2, clip_value)) * (2 ** 16 - 1) / clip_value
+        return np.round(np.minimum(self.vh_nice_display ** 2, clip_value) * (2 ** 16 - 1) / clip_value)
 
     @LazyProperty
     def vh_nesz_out(self) -> np.ndarray:
         clip_value = CONFIG.nesz_clip
-        return np.round(np.minimum(self.vh_nice_display ** 2, clip_value)) * (2 ** 16 - 1) / clip_value
+        return np.round(np.minimum(self.vh_nesz_in, clip_value) * (2 ** 16 - 1) / clip_value)
 
     @LazyProperty
     def mask(self) -> np.ndarray:
