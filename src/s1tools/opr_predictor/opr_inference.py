@@ -334,7 +334,7 @@ class OPRInference:
 
     def _pad_end(self, size: int) -> int:
         stride = self.patch_size // 2
-        extent = max(self.patch_size, self.pad + size)
+        extent = max(self.patch_size, 2 * self.pad + size)
         n_tiles = -(-(extent - self.patch_size) // stride)
         return self.patch_size + n_tiles * stride - self.pad - size
 

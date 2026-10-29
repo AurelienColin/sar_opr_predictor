@@ -106,3 +106,22 @@ def test_tile_with_24_percent_valid_pixels_is_rejected() -> None:
 
 def test_tile_with_26_percent_valid_pixels_is_kept() -> None:
     assert _kept_tile_count(0.26) == 1
+
+
+@pytest.mark.parametrize("size", [1, 127, 128, 129, 255, 257, 1001])
+def test_every_scene_pixel_is_covered_by_four_tiles(size: int) -> None:
+    shape = (size, size)
+    inference = OPRInference(
+        vv_nice_display=np.ones(shape),
+        vh_nice_display=np.ones(shape),
+        vh_nesz_in=np.zeros(shape),
+        ecmwf_wind_speed=np.zeros(shape),
+        incidence=np.zeros(shape),
+        invalidity_mask=np.zeros(shape, dtype=np.uint8),
+        models=(),
+    )
+    pad = inference.pad
+    count = np.zeros(inference.padded_shape[:2], dtype=int)
+    for c in inference.coordinates:
+        count[c] += 1
+    assert (count[pad:pad + size, pad:pad + size] == 4).all()

@@ -125,11 +125,11 @@ def test_validity_mask(data_from_reference: typing.Dict[str, np.ndarray]) -> Non
 
 
 def test_batch_image_shape(sar_data: OPRInference) -> None:
-    assert_array_integrity(sar_data.batch_image, (77, 256, 256, 3))
+    assert_array_integrity(sar_data.batch_image, (96, 256, 256, 3))
 
 
 def test_batch_scalar_shape(sar_data: OPRInference) -> None:
-    assert_array_integrity(sar_data.batch_scalar, (77, 3))
+    assert_array_integrity(sar_data.batch_scalar, (96, 3))
 
 
 def test_pad(sar_data: OPRInference) -> None:
@@ -137,15 +137,15 @@ def test_pad(sar_data: OPRInference) -> None:
 
 
 def test_pad_x(sar_data: OPRInference) -> None:
-    assert sar_data.pad_x == 63
+    assert sar_data.pad_x == 191
 
 
 def test_pad_y(sar_data: OPRInference) -> None:
-    assert sar_data.pad_y == 80
+    assert sar_data.pad_y == 208
 
 
 def test_padded_shape(sar_data: OPRInference) -> None:
-    assert sar_data.padded_shape == (1024, 1536, 3)
+    assert sar_data.padded_shape == (1152, 1664, 3)
 
 
 def test_models_existence(models: typing.Tuple) -> None:
@@ -161,11 +161,11 @@ def test_normalization_existence(models: typing.Tuple) -> None:
 
 
 def test_normalized_batch_image(normalized_batch: typing.Tuple[np.ndarray, np.ndarray]) -> None:
-    assert_array_integrity(normalized_batch[0], (77, 256, 256, 3), -1.39, 0.59, 15.37, 2)
+    assert_array_integrity(normalized_batch[0], (96, 256, 256, 3), -1.39, 0.71, 15.37, 2)
 
 
 def test_normalized_batch_scalar(normalized_batch: typing.Tuple[np.ndarray, np.ndarray]) -> None:
-    assert_array_integrity(normalized_batch[1], (77, 3), -2.73, -0.83, 2.00, 2)
+    assert_array_integrity(normalized_batch[1], (96, 3), -2.73, -0.76, 2.00, 2)
 
 
 def test_run_model_invariants(sar_data: OPRInference, single_model_prediction: np.ndarray) -> None:
