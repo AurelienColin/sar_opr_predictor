@@ -49,6 +49,7 @@ class OPRConfig:
     target_resolution_m: int = 200
     output_resolution_m: int = 1000
     minimum_incidence_angle: float = 29.1
+    minimum_valid_tile_fraction: float = 0.25
 
     h5_filename: str = "G.h5"
     normalization_filename: str = "normalization.npy"
@@ -397,7 +398,7 @@ class OPRInference:
         image_input, scalar_input = self.get_normalized_batch(model.normalization)
 
         are_patches_valid: typing.List[bool] = [
-            self.padded_mask[coordinate].mean() > 0.5
+            self.padded_mask[coordinate].mean() > CONFIG.minimum_valid_tile_fraction
             for coordinate in self.coordinates
         ]
         valid_indices = np.flatnonzero(are_patches_valid)

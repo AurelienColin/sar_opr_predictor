@@ -1,6 +1,7 @@
 import numpy as np
+import pytest
 
-from s1tools.opr_predictor.opr_inference import OPRInference
+from s1tools.opr_predictor.opr_inference import CONFIG, OPRInference
 
 
 def test_patch_validity_uses_patch_coordinates() -> None:
@@ -63,7 +64,7 @@ def test_rejected_tile_is_nan_where_uncovered_and_never_overwrites() -> None:
     )
     result = inference.run_model(_ConstantModel(5.0))
     valid = [
-        inference.padded_mask[c].mean() > 0.5 for c in inference.coordinates
+        inference.padded_mask[c].mean() > CONFIG.minimum_valid_tile_fraction for c in inference.coordinates
     ]
     assert not all(valid) and any(valid)
     pad = inference.pad
@@ -76,3 +77,32 @@ def test_rejected_tile_is_nan_where_uncovered_and_never_overwrites() -> None:
     assert np.all(result[expected_valid] == 5.0)
     assert np.all(np.isnan(result[~expected_valid]))
     assert (~covered & (inference.mask > 0.5)).any()
+
+
+def _kept_tile_count(valid_fraction: float) -> int:
+    shape = (CONFIG.patch_size, CONFIG.patch_size)
+    rng = np.random.default_rng(seed=0)
+    invalidity_mask = np.ones(shape, dtype=np.uint8)
+    n_valid = int(round(valid_fraction * invalidity_mask.size))
+    invalidity_mask.flat[rng.permutation(invalidity_mask.size)[:n_valid]] = 0
+    inference = OPRInference(
+        vv_nice_display=np.ones(shape),
+        vh_nice_display=np.ones(shape),
+        vh_nesz_in=np.zeros(shape),
+        ecmwf_wind_speed=np.zeros(shape),
+        incidence=np.zeros(shape),
+        invalidity_mask=invalidity_mask,
+        models=(),
+    )
+    fractions = [inference.padded_mask[c].mean() for c in inference.coordinates]
+    assert fractions == pytest.approx([valid_fraction] * len(fractions), abs=0.01)
+    result = inference.run_model(_ConstantModel(5.0))
+    return int(np.isfinite(result).any())
+
+
+def test_tile_with_24_percent_valid_pixels_is_rejected() -> None:
+    assert _kept_tile_count(0.24) == 0
+
+
+def test_tile_with_26_percent_valid_pixels_is_kept() -> None:
+    assert _kept_tile_count(0.26) == 1
