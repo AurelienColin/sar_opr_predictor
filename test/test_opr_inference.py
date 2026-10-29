@@ -59,3 +59,14 @@ def test_run_model_all_patches_invalid(model)-> None:
     prediction = inference.run_model(model)
     assert prediction.shape == shape
     assert np.isnan(prediction).all()
+
+
+def test_relative_std_zero_where_all_models_predict_zero() -> None:
+    outputs = [np.array([[0.0, 1.0, np.nan]]) for _ in range(4)]
+    inference = OPRInference.__new__(OPRInference)
+    inference.models = list(range(4))
+    inference.run_model = lambda model, batch_size=None: outputs[model]
+    mean, relative_std = inference.rain_rate_ensemble()
+    assert relative_std[0, 0] == 0.0
+    assert relative_std[0, 1] == 0.0
+    assert np.isnan(mean[0, 2]) and np.isnan(relative_std[0, 2])

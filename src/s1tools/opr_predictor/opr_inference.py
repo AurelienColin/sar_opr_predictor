@@ -422,6 +422,7 @@ class OPRInference:
         std = np.nanstd(stacked, axis=0)
         with np.errstate(divide="ignore", invalid="ignore"):
             relative_std = np.where(np.isfinite(mean) & (mean != 0), std / np.abs(mean), np.nan)
+        relative_std = np.where((mean == 0) & (std == 0), 0.0, relative_std)
         return mean, relative_std
 
 
