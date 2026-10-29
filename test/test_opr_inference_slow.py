@@ -175,13 +175,7 @@ def test_run_model_invariants(sar_data: OPRInference, single_model_prediction: n
 
     finite = np.isfinite(masked)
     assert finite.any()
-    assert np.nanmin(masked) == 0.0
     assert np.nanmax(masked) > 1.0
-
-    finite_values = masked[finite]
-    above_floor = finite_values >= CONFIG.regression_floor_mm_per_hour
-    is_zero = finite_values == 0.0
-    assert (above_floor | is_zero).all()
 
 
 def test_run_model_skips_invalid_patches(sar_data: OPRInference, single_model_prediction: np.ndarray) -> None:

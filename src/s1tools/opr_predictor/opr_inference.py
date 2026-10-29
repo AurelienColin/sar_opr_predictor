@@ -50,7 +50,6 @@ class OPRConfig:
     output_resolution_m: int = 1000
     minimum_incidence_angle: float = 29.1
 
-    regression_floor_mm_per_hour: float = 0.5
     h5_filename: str = "G.h5"
     normalization_filename: str = "normalization.npy"
     model_keys: typing.Tuple[str, ...] = DEFAULT_MODEL_KEYS
@@ -414,15 +413,14 @@ class OPRInference:
         evaluated = tuple(self.coordinates[index] for index in valid_indices)
         predictions = self.unpack_mosaic_prediction(outputs, evaluated)
         regression = predictions[1]
-        thresholded = np.where(regression < CONFIG.regression_floor_mm_per_hour, 0.0, regression)
-        return np.where(self.mask > 0.5, thresholded, np.nan)
+        return np.where(self.mask > 0.5, regression, np.nan)
 
     def rain_rate_ensemble(self, batch_size: int = CONFIG.patch_size) -> typing.Tuple[np.ndarray, np.ndarray]:
         stacked = np.stack([self.run_model(model, batch_size) for model in self.models], axis=0)
         mean = np.nanmean(stacked, axis=0)
         std = np.nanstd(stacked, axis=0)
         with np.errstate(divide="ignore", invalid="ignore"):
-            relative_std = np.where(mean > 0, std / mean, np.nan)
+            relative_std = np.where(np.isfinite(mean) & (mean != 0), std / np.abs(mean), np.nan)
         return mean, relative_std
 
 
