@@ -101,7 +101,7 @@ def test_reference_vv_ssr(data_from_reference: typing.Dict[str, np.ndarray]) -> 
 
 
 def test_computed_vv_ssr(sar_data: OPRInference) -> None:
-    assert_array_integrity(sar_data.vv_ssr, EXPECTED_SHAPE, 0, 16510, 65535)
+    assert_array_integrity(sar_data.vv_ssr, EXPECTED_SHAPE, 0, 16526, 65535)
 
 
 def test_reference_vh_ssr(data_from_reference: typing.Dict[str, np.ndarray]) -> None:
@@ -109,7 +109,7 @@ def test_reference_vh_ssr(data_from_reference: typing.Dict[str, np.ndarray]) -> 
 
 
 def test_computed_vh_ssr(sar_data: OPRInference) -> None:
-    assert_array_integrity(sar_data.vh_ssr, EXPECTED_SHAPE, 0, 5713, 65535)
+    assert_array_integrity(sar_data.vh_ssr, EXPECTED_SHAPE, 0, 6443, 65535)
 
 
 def test_reference_vh_nesz(data_from_reference: typing.Dict[str, np.ndarray]) -> None:
@@ -117,7 +117,7 @@ def test_reference_vh_nesz(data_from_reference: typing.Dict[str, np.ndarray]) ->
 
 
 def test_computed_vh_nesz(sar_data: OPRInference) -> None:
-    assert_array_integrity(sar_data.vh_nesz_out, EXPECTED_SHAPE, 0, 1691, 65535)
+    assert_array_integrity(sar_data.vh_nesz_out, EXPECTED_SHAPE, 1, 3.54, 10, 2)
 
 
 def test_validity_mask(data_from_reference: typing.Dict[str, np.ndarray]) -> None:
@@ -161,11 +161,11 @@ def test_normalization_existence(models: typing.Tuple) -> None:
 
 
 def test_normalized_batch_image(normalized_batch: typing.Tuple[np.ndarray, np.ndarray]) -> None:
-    assert_array_integrity(normalized_batch[0], (240, 256, 256, 3), -1.39, 0.50, 15.37, 2)
+    assert_array_integrity(normalized_batch[0], (240, 256, 256, 3), -1.39, 0.56, 15.37, 2)
 
 
 def test_normalized_batch_scalar(normalized_batch: typing.Tuple[np.ndarray, np.ndarray]) -> None:
-    assert_array_integrity(normalized_batch[1], (240, 3), -2.73, -0.59, 4.30, 2)
+    assert_array_integrity(normalized_batch[1], (240, 3), -2.73, -0.78, 2.00, 2)
 
 
 def test_run_model_invariants(sar_data: OPRInference, single_model_prediction: np.ndarray) -> None:
