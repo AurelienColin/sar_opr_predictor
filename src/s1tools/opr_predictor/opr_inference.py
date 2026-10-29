@@ -181,10 +181,10 @@ def get_slice_generator(
     shape: typing.Tuple[int, ...],
     patch_size: int = CONFIG.patch_size,
 ) -> typing.Generator[typing.Tuple[slice, slice], None, None]:
-    stride = patch_size // 4
-    for x1 in range(0, shape[0] - patch_size, stride):
+    stride = patch_size // 2
+    for x1 in range(0, shape[0] - patch_size + 1, stride):
         x2 = x1 + patch_size
-        for y1 in range(0, shape[1] - patch_size, stride):
+        for y1 in range(0, shape[1] - patch_size + 1, stride):
             y2 = y1 + patch_size
             yield np.s_[x1:x2, y1:y2]
 
@@ -235,6 +235,29 @@ def content_to_patches(
     return batch_image, batch_scalar, coordinates, image_inputs.shape
 
 
+def tile_weights(patch_size: int = CONFIG.patch_size) -> np.ndarray:
+    profile = 1 - np.abs(np.arange(patch_size) - (patch_size - 1) / 2) / (patch_size / 2)
+    return np.outer(profile, profile)
+
+
+def weighted_mosaic(
+    tiles: np.ndarray,
+    coordinates: typing.Sequence[typing.Tuple[slice, slice]],
+    shape: typing.Tuple[int, ...],
+    patch_size: int = CONFIG.patch_size,
+) -> np.ndarray:
+    weights = tile_weights(patch_size)
+    numerator = np.zeros(shape[:2])
+    denominator = np.zeros(shape[:2])
+    for slices, tile in zip(coordinates, tiles):
+        numerator[slices] += weights * tile
+        denominator[slices] += weights
+    field = np.full(shape[:2], np.nan)
+    covered = denominator > 0
+    field[covered] = numerator[covered] / denominator[covered]
+    return field
+
+
 def unpack_mosaic_prediction(
     mosaics: typing.Tuple[np.ndarray, ...],
     shape: typing.Tuple[int, ...],
@@ -245,13 +268,9 @@ def unpack_mosaic_prediction(
     patch_size: int = CONFIG.patch_size,
 ) -> typing.Tuple[np.ndarray, ...]:
     predictions: typing.List[np.ndarray] = []
-    center_slice = np.s_[patch_size // 4:-patch_size // 4, patch_size // 4:-patch_size // 4]
     for mosaic in mosaics[:2]:
-        prediction = np.full(shape[:2], np.nan)
-        for (x_slice, y_slice), tile in zip(coordinates, mosaic):
-            prediction[x_slice, y_slice][center_slice] = tile[center_slice][:, :, 0]
-        prediction = prediction[pad:-pad_x, pad:-pad_y]
-        predictions.append(prediction)
+        field = weighted_mosaic(mosaic[:, :, :, 0], coordinates, shape, patch_size)
+        predictions.append(field[pad:shape[0] - pad_x, pad:shape[1] - pad_y])
     return tuple(predictions)
 
 
@@ -307,25 +326,25 @@ class OPRInference:
 
     @LazyProperty
     def pad(self) -> int:
-        return self.patch_size // 4
+        return self.patch_size // 2
 
     @LazyProperty
     def padded_mask(self) -> np.ndarray:
         return get_inputs((self.mask,), self.pad_x, self.pad_y, self.pad)[:, :, 0]
 
+    def _pad_end(self, size: int) -> int:
+        stride = self.patch_size // 2
+        extent = max(self.patch_size, self.pad + size)
+        n_tiles = -(-(extent - self.patch_size) // stride)
+        return self.patch_size + n_tiles * stride - self.pad - size
+
     @LazyProperty
     def pad_x(self) -> int:
-        pad_x = self.patch_size - (self.shape[0] + self.pad) % self.patch_size
-        if pad_x < self.pad:
-            pad_x += self.patch_size
-        return pad_x
+        return self._pad_end(self.shape[0])
 
     @LazyProperty
     def pad_y(self) -> int:
-        pad_y = self.patch_size - (self.shape[1] + self.pad) % self.patch_size
-        if pad_y < self.pad:
-            pad_y += self.patch_size
-        return pad_y
+        return self._pad_end(self.shape[1])
 
     def set_patches(self) -> None:
         batch_image, batch_scalar, coordinates, padded_shape = content_to_patches(
@@ -361,9 +380,13 @@ class OPRInference:
     def get_normalized_batch(self, normalization: np.ndarray) -> typing.Tuple[np.ndarray, np.ndarray]:
         return normalize(normalization, self.batch_image, self.batch_scalar)
 
-    def unpack_mosaic_prediction(self, mosaics: typing.Tuple[np.ndarray, ...]) -> typing.Tuple[np.ndarray, ...]:
+    def unpack_mosaic_prediction(
+        self,
+        mosaics: typing.Tuple[np.ndarray, ...],
+        coordinates: typing.Sequence[typing.Tuple[slice, slice]],
+    ) -> typing.Tuple[np.ndarray, ...]:
         return unpack_mosaic_prediction(
-            mosaics, self.padded_shape, self.coordinates,
+            mosaics, self.padded_shape, coordinates,
             self.pad_x, self.pad_y, pad=self.pad, patch_size=self.patch_size,
         )
 
@@ -379,7 +402,6 @@ class OPRInference:
             for coordinate in self.coordinates
         ]
         valid_indices = np.flatnonzero(are_patches_valid)
-        n_patches = len(self.coordinates)
 
         if valid_indices.size == 0:
             return np.full(self.shape, np.nan)
@@ -389,13 +411,8 @@ class OPRInference:
             batch_size=batch_size,
         )
 
-        mosaics = []
-        for output in outputs:
-            full = np.zeros((n_patches, *output.shape[1:]), dtype=output.dtype)
-            full[valid_indices] = output
-            mosaics.append(full)
-
-        predictions = self.unpack_mosaic_prediction(mosaics)
+        evaluated = tuple(self.coordinates[index] for index in valid_indices)
+        predictions = self.unpack_mosaic_prediction(outputs, evaluated)
         regression = predictions[1]
         thresholded = np.where(regression >= CONFIG.regression_floor_mm_per_hour, regression, 0.0)
         return np.where(self.mask > 0.5, thresholded, np.nan)
