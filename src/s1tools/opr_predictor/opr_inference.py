@@ -414,7 +414,7 @@ class OPRInference:
         evaluated = tuple(self.coordinates[index] for index in valid_indices)
         predictions = self.unpack_mosaic_prediction(outputs, evaluated)
         regression = predictions[1]
-        thresholded = np.where(regression >= CONFIG.regression_floor_mm_per_hour, regression, 0.0)
+        thresholded = np.where(regression < CONFIG.regression_floor_mm_per_hour, 0.0, regression)
         return np.where(self.mask > 0.5, thresholded, np.nan)
 
     def rain_rate_ensemble(self, batch_size: int = CONFIG.patch_size) -> typing.Tuple[np.ndarray, np.ndarray]:
