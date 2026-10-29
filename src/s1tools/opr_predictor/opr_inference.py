@@ -310,6 +310,10 @@ class OPRInference:
         return self.patch_size // 4
 
     @LazyProperty
+    def padded_mask(self) -> np.ndarray:
+        return get_inputs((self.mask,), self.pad_x, self.pad_y, self.pad)[:, :, 0]
+
+    @LazyProperty
     def pad_x(self) -> int:
         pad_x = self.patch_size - (self.shape[0] + self.pad) % self.patch_size
         if pad_x < self.pad:
@@ -371,7 +375,7 @@ class OPRInference:
         image_input, scalar_input = self.get_normalized_batch(model.normalization)
 
         are_patches_valid: typing.List[bool] = [
-            self.mask[coordinate].mean() > 0.5
+            self.padded_mask[coordinate].mean() > 0.5
             for coordinate in self.coordinates
         ]
         valid_indices = np.flatnonzero(are_patches_valid)
