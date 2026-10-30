@@ -73,8 +73,7 @@ def sar_data(
         ecmwf_wind_speed=data_from_reference["ecmwf_wind_speed"],
         incidence=data_from_reference["incidence"],
         invalidity_mask=data_from_reference["validity_mask"],  # naming discrepancy in test .npz
-        # Rectangle stop-gap: the reference NPZ has no footprint key until it is regenerated.
-        footprint=np.ones(EXPECTED_SHAPE, dtype=bool),
+        footprint=data_from_reference["footprint"],
         models=models,
     )
 
@@ -163,11 +162,11 @@ def test_normalization_existence(models: typing.Tuple) -> None:
 
 
 def test_normalized_batch_image(normalized_batch: typing.Tuple[np.ndarray, np.ndarray]) -> None:
-    assert_array_integrity(normalized_batch[0], (96, 256, 256, 3), -1.39, 0.71, 15.37, 2)
+    assert_array_integrity(normalized_batch[0], (96, 256, 256, 3), -1.28, 0.85, 15.37, 2)
 
 
 def test_normalized_batch_scalar(normalized_batch: typing.Tuple[np.ndarray, np.ndarray]) -> None:
-    assert_array_integrity(normalized_batch[1], (96, 3), -2.73, -0.76, 2.00, 2)
+    assert_array_integrity(normalized_batch[1], (96, 3), -2.73, -0.77, 1.90, 2)
 
 
 def test_run_model_invariants(sar_data: OPRInference, single_model_prediction: np.ndarray) -> None:
