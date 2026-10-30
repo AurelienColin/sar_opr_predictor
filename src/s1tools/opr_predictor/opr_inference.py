@@ -391,7 +391,7 @@ class OPRInference:
 
     @LazyProperty
     def mask(self) -> np.ndarray:
-        return np.logical_and.reduce((self.finite_footprint, self.vv_ssr > 0, self.invalidity_mask == 0))
+        return np.logical_and(self.finite_footprint, self.invalidity_mask == 0)
 
     @LazyProperty
     def pad(self) -> int:

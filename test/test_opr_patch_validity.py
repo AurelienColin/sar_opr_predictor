@@ -134,3 +134,24 @@ def test_every_scene_pixel_is_covered_by_four_tiles(size: int) -> None:
     for c in inference.coordinates:
         count[c] += 1
     assert (count[pad:pad + size, pad:pad + size] == 4).all()
+
+
+def test_zero_vv_inside_footprint_is_valid_data() -> None:
+    shape = (CONFIG.patch_size, CONFIG.patch_size)
+    vv = np.zeros(shape)
+    inference = OPRInference(
+        vv_nice_display=vv,
+        vh_nice_display=np.ones(shape),
+        vh_nesz_in=np.zeros(shape),
+        ecmwf_wind_speed=np.zeros(shape),
+        incidence=np.zeros(shape),
+        invalidity_mask=np.zeros(shape, dtype=np.uint8),
+        footprint=np.ones(shape, dtype=bool),
+        models=(),
+    )
+    assert inference.mask.all()
+    pad = inference.pad
+    scene_tile = next(c for c in inference.coordinates if (c[0].start, c[1].start) == (pad, pad))
+    assert inference.padded_mask[scene_tile].mean() > CONFIG.minimum_valid_tile_fraction
+    result = inference.run_model(_ConstantModel(5.0))
+    assert np.all(result == 5.0)
