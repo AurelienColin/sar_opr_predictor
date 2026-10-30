@@ -223,8 +223,8 @@ def footprint_reflection_indices(
     footprint's bounding box (``np.pad(mode="reflect")`` of the box). Where that mirror falls outside
     the footprint, it is then mirrored about the first/last footprint index of its row (range pass)
     or of its column (azimuth pass), whichever is nearer. Where that line mirror is more than twice as
-    far as the nearest footprint pixel (notch between two staircases), the pixel is point-reflected
-    through that nearest pixel instead.
+    far as the nearest footprint pixel (notch between two staircases), or still falls outside the
+    footprint (hole inside a line), the pixel is point-reflected through that nearest pixel instead.
     """
     padded = place_in_padded_frame(footprint.astype(bool), pad_x, pad_y, pad)
     rows, cols = np.indices(padded.shape)
@@ -247,7 +247,7 @@ def footprint_reflection_indices(
     source_cols = np.where(use_range, range_cols, cols)
     distance, (near_rows, near_cols) = ndimage.distance_transform_edt(~padded, return_indices=True)
     line_distance = np.where(use_range, range_distance, np.where(use_azimuth, azimuth_distance, np.inf))
-    notch = ~inside & (line_distance > 2 * distance[rows, cols])
+    notch = ~inside & ((line_distance > 2 * distance[rows, cols]) | ~padded[source_rows, source_cols])
     mirror_rows = np.clip(2 * near_rows[rows, cols] - rows, 0, padded.shape[0] - 1)
     mirror_cols = np.clip(2 * near_cols[rows, cols] - cols, 0, padded.shape[1] - 1)
     mirror_rows, mirror_cols = near_rows[mirror_rows, mirror_cols], near_cols[mirror_rows, mirror_cols]
@@ -384,8 +384,14 @@ class OPRInference:
         return np.round(np.minimum(self.vh_nesz_in, clip_value) * (2 ** 16 - 1) / clip_value)
 
     @LazyProperty
+    def finite_footprint(self) -> np.ndarray:
+        """Footprint pixels where every array fed to the models is finite."""
+        model_inputs = (self.vv_ssr, self.vh_ssr, self.vh_nesz_out, self.incidence, self.ecmwf_wind_speed)
+        return np.logical_and.reduce((self.footprint.astype(bool),) + tuple(np.isfinite(a) for a in model_inputs))
+
+    @LazyProperty
     def mask(self) -> np.ndarray:
-        return np.logical_and.reduce((self.footprint.astype(bool), self.vv_ssr > 0, self.invalidity_mask == 0))
+        return np.logical_and.reduce((self.finite_footprint, self.vv_ssr > 0, self.invalidity_mask == 0))
 
     @LazyProperty
     def pad(self) -> int:
@@ -397,7 +403,7 @@ class OPRInference:
 
     @LazyProperty
     def reflection_indices(self) -> typing.Tuple[np.ndarray, np.ndarray]:
-        return footprint_reflection_indices(self.footprint, self.pad_x, self.pad_y, self.pad)
+        return footprint_reflection_indices(self.finite_footprint, self.pad_x, self.pad_y, self.pad)
 
     def _pad_end(self, size: int) -> int:
         stride = self.patch_size // 2
