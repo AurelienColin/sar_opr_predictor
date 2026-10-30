@@ -14,12 +14,13 @@ from s1tools.opr_predictor.opr_inference import (
 
 SHAPE: typing.Tuple[int, int] = (833, 1328)
 LAND = np.s_[400:440, 600:640]
+BURST_STEP = 12
 
 
 def staircase_footprint() -> np.ndarray:
     """Three overlapping subswaths of nine bursts each, skewed so that the outer edges are staircases."""
     footprint = np.zeros(SHAPE, dtype=bool)
-    n_bursts, burst_height, burst_step = 9, 80, 12
+    n_bursts, burst_height, burst_step = 9, 80, BURST_STEP
     subswath_width, overlap = 400, 30
     for subswath in range(3):
         col0 = 40 + subswath * (subswath_width - overlap)
@@ -112,8 +113,22 @@ def test_outside_pixels_mirror_about_the_bounding_box(inference, padded_footprin
     assert np.array_equal(rows_src[selection] + pad, mirror_rows[selection])
     assert np.array_equal(cols_src[selection] + pad, mirror_cols[selection])
     flat = np.ravel_multi_index((rows_src[corners], cols_src[corners]), SHAPE)
-    assert np.unique(flat, return_counts=True)[1].max() <= 3
+    assert np.unique(flat, return_counts=True)[1].max() <= 4
 
+
+def test_source_map_is_locally_continuous_outside(inference, padded_footprint) -> None:
+    rows_src, cols_src = inference.reflection_indices
+    outside = ~padded_footprint
+    jumps = []
+    for axis in (0, 1):
+        jump = np.maximum(np.abs(np.diff(rows_src, axis=axis)), np.abs(np.diff(cols_src, axis=axis)))
+        pairs = (outside[1:, :] & outside[:-1, :]) if axis == 0 else (outside[:, 1:] & outside[:, :-1])
+        jumps.append(jump[pairs])
+    jumps = np.concatenate(jumps)
+    assert np.percentile(jumps, 99.9) <= 2 * BURST_STEP
+    assert jumps.max() <= 2 * BURST_STEP + 1
+    flat = np.ravel_multi_index((rows_src[outside], cols_src[outside]), SHAPE)
+    assert np.unique(flat, return_counts=True)[1].max() <= 16
 
 def test_boundary_continuity(inference, padded, padded_footprint) -> None:
     inner_pairs = padded_footprint[:, 1:] & padded_footprint[:, :-1]

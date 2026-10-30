@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
+from scipy import ndimage
 from tensorflow.keras import backend as K
 
 
@@ -221,7 +222,9 @@ def footprint_reflection_indices(
     Pixels inside the footprint map to themselves. Every other pixel is first mirrored about the
     footprint's bounding box (``np.pad(mode="reflect")`` of the box). Where that mirror falls outside
     the footprint, it is then mirrored about the first/last footprint index of its row (range pass)
-    or of its column (azimuth pass), whichever is nearer.
+    or of its column (azimuth pass), whichever is nearer. Where that line mirror is more than twice as
+    far as the nearest footprint pixel (notch between two staircases), the pixel is point-reflected
+    through that nearest pixel instead.
     """
     padded = place_in_padded_frame(footprint.astype(bool), pad_x, pad_y, pad)
     rows, cols = np.indices(padded.shape)
@@ -242,6 +245,14 @@ def footprint_reflection_indices(
     use_azimuth = ~inside & cols_ok[cols] & ~use_range
     source_rows = np.where(use_azimuth, azimuth_rows, rows)
     source_cols = np.where(use_range, range_cols, cols)
+    distance, (near_rows, near_cols) = ndimage.distance_transform_edt(~padded, return_indices=True)
+    line_distance = np.where(use_range, range_distance, np.where(use_azimuth, azimuth_distance, np.inf))
+    notch = ~inside & (line_distance > 2 * distance[rows, cols])
+    mirror_rows = np.clip(2 * near_rows[rows, cols] - rows, 0, padded.shape[0] - 1)
+    mirror_cols = np.clip(2 * near_cols[rows, cols] - cols, 0, padded.shape[1] - 1)
+    mirror_rows, mirror_cols = near_rows[mirror_rows, mirror_cols], near_cols[mirror_rows, mirror_cols]
+    source_rows = np.where(notch, mirror_rows, source_rows)
+    source_cols = np.where(notch, mirror_cols, source_cols)
     return source_rows - pad, source_cols - pad
 
 
