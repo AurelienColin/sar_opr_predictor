@@ -181,3 +181,33 @@ def test_full_footprint_matches_rectangle_reflection(shape: typing.Tuple[int, in
     indices = footprint_reflection_indices(np.ones(shape, dtype=bool), pad_x, pad_y, pad)
     expected = np.pad(np.stack(arrays, axis=-1), ((pad, pad_x), (pad, pad_y), (0, 0)), mode="reflect")
     assert np.array_equal(get_inputs(arrays, indices), expected)
+
+
+class _ConstantModel:
+    normalization = np.stack([np.zeros(5), np.ones(5)])
+
+    def __init__(self, value: float) -> None:
+        self.value = value
+
+    def predict(self, inputs, batch_size=None):
+        n, size = inputs[0].shape[0], inputs[0].shape[1]
+        return np.zeros((n, size, size, 1)), np.full((n, size, size, 1), self.value)
+
+
+@pytest.mark.parametrize("values", [(2.0, 4.0), (0.0, 0.0)])
+def test_mean_and_std_are_nan_outside_footprint(footprint, scene, values) -> None:
+    inference = OPRInference(
+        vv_nice_display=scene,
+        vh_nice_display=scene,
+        vh_nesz_in=np.ones(SHAPE),
+        ecmwf_wind_speed=np.ones(SHAPE),
+        incidence=np.full(SHAPE, 35.0),
+        invalidity_mask=np.zeros(SHAPE, dtype=np.uint8),
+        footprint=footprint,
+        models=tuple(_ConstantModel(value) for value in values),
+    )
+    mean, relative_std = inference.rain_rate_ensemble()
+    assert np.all(np.isnan(mean[~footprint]))
+    assert np.all(np.isnan(relative_std[~footprint]))
+    assert np.isfinite(mean[inference.mask]).mean() > 0.99
+    assert np.isfinite(relative_std[inference.mask]).mean() > 0.99
