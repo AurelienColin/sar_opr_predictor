@@ -49,7 +49,8 @@ def ipf_inference(reference_inputs, ipf_models):
         ecmwf_wind_speed=reference_inputs["ecmwf_wind_speed"],
         incidence=reference_inputs["incidence"],
         invalidity_mask=reference_inputs["validity_mask"],
-        footprint=reference_inputs.get("footprint", np.ones(reference_inputs["vv_nice_display"].shape, dtype=bool)),
+        # Rectangle stop-gap: the reference NPZ has no footprint key until it is regenerated.
+        footprint=np.ones(reference_inputs["vv_nice_display"].shape, dtype=bool),
         models=ipf_models,
     )
 
