@@ -33,6 +33,7 @@ def test_constant_field_includes_last_row_and_column() -> None:
         ecmwf_wind_speed=np.zeros((300, 410)),
         incidence=np.zeros((300, 410)),
         invalidity_mask=np.zeros((300, 410)),
+        footprint=np.ones((300, 410), dtype=bool),
         models=(),
     )
     tiles = np.full((len(inference.coordinates), PATCH_SIZE, PATCH_SIZE, 1), 2.0)

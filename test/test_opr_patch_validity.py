@@ -15,6 +15,7 @@ def test_patch_validity_uses_patch_coordinates() -> None:
         ecmwf_wind_speed=np.zeros(shape),
         incidence=np.zeros(shape),
         invalidity_mask=invalidity_mask,
+        footprint=np.ones(shape, dtype=bool),
         models=(),
     )
     pad = inference.pad
@@ -60,6 +61,7 @@ def test_rejected_tile_is_nan_where_uncovered_and_never_overwrites() -> None:
         ecmwf_wind_speed=np.zeros(shape),
         incidence=np.zeros(shape),
         invalidity_mask=invalidity_mask,
+        footprint=np.ones(shape, dtype=bool),
         models=(),
     )
     result = inference.run_model(_ConstantModel(5.0))
@@ -92,10 +94,16 @@ def _kept_tile_count(valid_fraction: float) -> int:
         ecmwf_wind_speed=np.zeros(shape),
         incidence=np.zeros(shape),
         invalidity_mask=invalidity_mask,
+        footprint=np.ones(shape, dtype=bool),
         models=(),
     )
-    fractions = [inference.padded_mask[c].mean() for c in inference.coordinates]
-    assert fractions == pytest.approx([valid_fraction] * len(fractions), abs=0.01)
+    pad = inference.pad
+    fractions = {
+        (c[0].start, c[1].start): inference.padded_mask[c].mean() for c in inference.coordinates
+    }
+    scene_tile = fractions.pop((pad, pad))
+    assert scene_tile == pytest.approx(valid_fraction, abs=0.01)
+    assert all(fraction < scene_tile for fraction in fractions.values())
     result = inference.run_model(_ConstantModel(5.0))
     return int(np.isfinite(result).any())
 
@@ -118,6 +126,7 @@ def test_every_scene_pixel_is_covered_by_four_tiles(size: int) -> None:
         ecmwf_wind_speed=np.zeros(shape),
         incidence=np.zeros(shape),
         invalidity_mask=np.zeros(shape, dtype=np.uint8),
+        footprint=np.ones(shape, dtype=bool),
         models=(),
     )
     pad = inference.pad

@@ -53,6 +53,7 @@ def test_run_model_all_patches_invalid(model)-> None:
         ecmwf_wind_speed=np.zeros(shape, dtype=np.float64),
         incidence=np.zeros(shape, dtype=np.float64),
         invalidity_mask=np.ones(shape, dtype=np.uint8),
+        footprint=np.ones(shape, dtype=bool),
         models=(model,),
     )
     assert not inference.mask.any()

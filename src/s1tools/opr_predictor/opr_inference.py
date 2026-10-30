@@ -189,15 +189,72 @@ def get_slice_generator(
             yield np.s_[x1:x2, y1:y2]
 
 
-def get_inputs(
-    arrays: typing.Tuple[np.ndarray, ...],
+def fold(index: np.ndarray, low: np.ndarray, high: np.ndarray) -> np.ndarray:
+    """Mirror ``index`` into ``[low, high]`` with the semantics of ``np.pad(mode="reflect")``."""
+    length = high - low
+    half_period = np.maximum(length, 1)
+    t = (index - low) % (2 * half_period)
+    folded = low + np.where(t < half_period, t, 2 * half_period - t)
+    return np.where(length == 0, low, folded)
+
+
+def line_limits(footprint: np.ndarray, axis: int) -> typing.Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    has_footprint = footprint.any(axis=axis)
+    first = footprint.argmax(axis=axis)
+    last = footprint.shape[axis] - 1 - np.flip(footprint, axis=axis).argmax(axis=axis)
+    return has_footprint, first, last
+
+
+def place_in_padded_frame(array: np.ndarray, pad_x: int, pad_y: int, pad: int = 0) -> np.ndarray:
+    pad_width = ((pad, pad_x), (pad, pad_y)) + ((0, 0),) * (array.ndim - 2)
+    return np.pad(array, pad_width, mode="constant", constant_values=0)
+
+
+def footprint_reflection_indices(
+    footprint: np.ndarray,
     pad_x: int,
     pad_y: int,
     pad: int = 0,
+) -> typing.Tuple[np.ndarray, np.ndarray]:
+    """Source (row, column) in the unpadded scene of every pixel of the padded frame.
+
+    Pixels inside the footprint map to themselves. Outside it, each pixel is mirrored about the
+    first/last footprint index of its row (range pass) or of its column (azimuth pass), whichever
+    is nearer; the outer corners, reached by neither pass, mirror the azimuth-filled rows.
+    """
+    padded = place_in_padded_frame(footprint.astype(bool), pad_x, pad_y, pad)
+    rows, cols = np.indices(padded.shape)
+    if not padded.any():
+        return np.clip(rows - pad, 0, footprint.shape[0] - 1), np.clip(cols - pad, 0, footprint.shape[1] - 1)
+    rows_ok, first_col, last_col = line_limits(padded, 1)
+    cols_ok, first_row, last_row = line_limits(padded, 0)
+    range_cols = fold(cols, first_col[:, None], last_col[:, None])
+    range_distance = np.minimum(np.abs(cols - first_col[:, None]), np.abs(cols - last_col[:, None]))
+    azimuth_rows = fold(rows, first_row[None, :], last_row[None, :])
+    azimuth_distance = np.minimum(np.abs(rows - first_row[None, :]), np.abs(rows - last_row[None, :]))
+    use_range = rows_ok[:, None] & (~cols_ok[None, :] | (range_distance <= azimuth_distance))
+    use_azimuth = cols_ok[None, :] & ~use_range
+    source_rows = rows.copy()
+    source_cols = cols.copy()
+    source_cols[use_range] = range_cols[use_range]
+    source_rows[use_azimuth] = azimuth_rows[use_azimuth]
+    corners = ~rows_ok[:, None] & ~cols_ok[None, :]
+    first_ok_col, last_ok_col = np.flatnonzero(cols_ok)[[0, -1]]
+    corner_rows = rows[corners]
+    corner_cols = fold(cols, first_ok_col, last_ok_col)[corners]
+    source_rows[corners] = source_rows[corner_rows, corner_cols]
+    source_cols[corners] = source_cols[corner_rows, corner_cols]
+    source_rows[padded] = rows[padded]
+    source_cols[padded] = cols[padded]
+    return source_rows - pad, source_cols - pad
+
+
+def get_inputs(
+    arrays: typing.Tuple[np.ndarray, ...],
+    reflection_indices: typing.Tuple[np.ndarray, np.ndarray],
 ) -> np.ndarray:
     inputs: np.ndarray = np.stack(arrays, axis=-1)
-    pad_width = ((pad, pad_x), (pad, pad_y), (0, 0))
-    return np.pad(inputs, pad_width, mode="reflect")
+    return inputs[reflection_indices]
 
 
 def concatenation_to_patches(
@@ -222,13 +279,11 @@ def content_to_patches(
     crosspol_nesz: np.ndarray,
     incidence_angle: np.ndarray,
     ecmwf_wind_speed: np.ndarray,
-    pad_x: int,
-    pad_y: int,
-    pad: int = 0,
+    reflection_indices: typing.Tuple[np.ndarray, np.ndarray],
     patch_size: int = CONFIG.patch_size,
 ) -> typing.Tuple[np.ndarray, np.ndarray, typing.Tuple[typing.Tuple[slice, slice], ...], typing.Tuple[int, ...]]:
-    image_inputs = get_inputs((copol_ssr, crosspol_ssr, mask * 0), pad_x, pad_y, pad)
-    scalar_inputs = get_inputs((crosspol_nesz, incidence_angle, ecmwf_wind_speed), pad_x, pad_y, pad)
+    image_inputs = get_inputs((copol_ssr, crosspol_ssr, mask * 0), reflection_indices)
+    scalar_inputs = get_inputs((crosspol_nesz, incidence_angle, ecmwf_wind_speed), reflection_indices)
     batch_image, batch_scalar, coordinates = concatenation_to_patches(
         image_inputs, scalar_inputs, patch_size=patch_size,
     )
@@ -297,6 +352,7 @@ class OPRInference:
     ecmwf_wind_speed: np.ndarray
     incidence: np.ndarray
     invalidity_mask: np.ndarray
+    footprint: np.ndarray
     models: typing.Tuple[tf.keras.models.Model, ...]
 
     patch_size: int = CONFIG.patch_size
@@ -322,7 +378,7 @@ class OPRInference:
 
     @LazyProperty
     def mask(self) -> np.ndarray:
-        return np.logical_and.reduce((self.vv_ssr > 0, self.invalidity_mask == 0))
+        return np.logical_and.reduce((self.footprint.astype(bool), self.vv_ssr > 0, self.invalidity_mask == 0))
 
     @LazyProperty
     def pad(self) -> int:
@@ -330,7 +386,11 @@ class OPRInference:
 
     @LazyProperty
     def padded_mask(self) -> np.ndarray:
-        return get_inputs((self.mask,), self.pad_x, self.pad_y, self.pad)[:, :, 0]
+        return place_in_padded_frame(self.mask, self.pad_x, self.pad_y, self.pad)
+
+    @LazyProperty
+    def reflection_indices(self) -> typing.Tuple[np.ndarray, np.ndarray]:
+        return footprint_reflection_indices(self.footprint, self.pad_x, self.pad_y, self.pad)
 
     def _pad_end(self, size: int) -> int:
         stride = self.patch_size // 2
@@ -350,7 +410,7 @@ class OPRInference:
         batch_image, batch_scalar, coordinates, padded_shape = content_to_patches(
             self.vv_ssr, self.vh_ssr, self.mask * 0,
             self.vh_nesz_out, self.incidence, self.ecmwf_wind_speed,
-            self.pad_x, self.pad_y, self.pad, patch_size=self.patch_size,
+            self.reflection_indices, patch_size=self.patch_size,
         )
         self.__dict__["_lazy_batch_image"] = batch_image
         self.__dict__["_lazy_batch_scalar"] = batch_scalar

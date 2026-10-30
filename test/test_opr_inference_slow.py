@@ -73,6 +73,7 @@ def sar_data(
         ecmwf_wind_speed=data_from_reference["ecmwf_wind_speed"],
         incidence=data_from_reference["incidence"],
         invalidity_mask=data_from_reference["validity_mask"],  # naming discrepancy in test .npz
+        footprint=data_from_reference.get("footprint", np.ones(EXPECTED_SHAPE, dtype=bool)),
         models=models,
     )
 
