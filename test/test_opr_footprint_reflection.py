@@ -5,6 +5,7 @@ import pytest
 
 from s1tools.opr_predictor.opr_inference import (
     OPRInference,
+    fold,
     footprint_reflection_indices,
     get_inputs,
     line_limits,
@@ -96,32 +97,22 @@ def test_no_zero_in_padded_input(padded: np.ndarray) -> None:
     assert np.all(padded != 0)
 
 
-def test_mirror_identity(inference, padded, padded_footprint) -> None:
+def test_outside_pixels_mirror_about_the_bounding_box(inference, padded_footprint) -> None:
     pad = inference.pad
     rows_src, cols_src = inference.reflection_indices
-    rows, cols = np.indices(padded.shape)
-    outside = ~padded_footprint
-    range_pass = outside & (rows_src + pad == rows) & (cols_src + pad != cols)
-    azimuth_pass = outside & (cols_src + pad == cols) & (rows_src + pad != rows)
-    assert range_pass.any() and azimuth_pass.any()
-    rows_ok, first_col, last_col = line_limits(padded_footprint, 1)
-    cols_ok, first_row, last_row = line_limits(padded_footprint, 0)
-    for mask, ok, first, last, index, axis in (
-        (range_pass, rows_ok, first_col, last_col, cols, 1),
-        (azimuth_pass, cols_ok, first_row, last_row, rows, 0),
-    ):
-        lo = first[:, None] if axis == 1 else first[None, :]
-        hi = last[:, None] if axis == 1 else last[None, :]
-        lo, hi = np.broadcast_to(lo, padded.shape), np.broadcast_to(hi, padded.shape)
-        before = mask & (index < lo) & (2 * lo - index <= hi)
-        after = mask & (index > hi) & (2 * hi - index >= lo)
-        assert before.any() and after.any()
-        for selection, mirrored in ((before, 2 * lo - index), (after, 2 * hi - index)):
-            if axis == 1:
-                expected = padded[rows[selection], mirrored[selection]]
-            else:
-                expected = padded[mirrored[selection], cols[selection]]
-            assert np.array_equal(padded[selection], expected)
+    rows, cols = np.indices(padded_footprint.shape)
+    rows_ok, _, _ = line_limits(padded_footprint, 1)
+    cols_ok, _, _ = line_limits(padded_footprint, 0)
+    r0, r1 = np.flatnonzero(rows_ok)[[0, -1]]
+    c0, c1 = np.flatnonzero(cols_ok)[[0, -1]]
+    mirror_rows, mirror_cols = fold(rows, r0, r1), fold(cols, c0, c1)
+    selection = ~padded_footprint & padded_footprint[mirror_rows, mirror_cols]
+    corners = ~rows_ok[:, None] & ~cols_ok[None, :]
+    assert (selection & corners).any()
+    assert np.array_equal(rows_src[selection] + pad, mirror_rows[selection])
+    assert np.array_equal(cols_src[selection] + pad, mirror_cols[selection])
+    flat = np.ravel_multi_index((rows_src[corners], cols_src[corners]), SHAPE)
+    assert np.unique(flat, return_counts=True)[1].max() <= 3
 
 
 def test_boundary_continuity(inference, padded, padded_footprint) -> None:

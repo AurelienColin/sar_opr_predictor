@@ -218,9 +218,10 @@ def footprint_reflection_indices(
 ) -> typing.Tuple[np.ndarray, np.ndarray]:
     """Source (row, column) in the unpadded scene of every pixel of the padded frame.
 
-    Pixels inside the footprint map to themselves. Outside it, each pixel is mirrored about the
-    first/last footprint index of its row (range pass) or of its column (azimuth pass), whichever
-    is nearer; the outer corners, reached by neither pass, mirror the azimuth-filled rows.
+    Pixels inside the footprint map to themselves. Every other pixel is first mirrored about the
+    footprint's bounding box (``np.pad(mode="reflect")`` of the box). Where that mirror falls outside
+    the footprint, it is then mirrored about the first/last footprint index of its row (range pass)
+    or of its column (azimuth pass), whichever is nearer.
     """
     padded = place_in_padded_frame(footprint.astype(bool), pad_x, pad_y, pad)
     rows, cols = np.indices(padded.shape)
@@ -228,24 +229,19 @@ def footprint_reflection_indices(
         return np.clip(rows - pad, 0, footprint.shape[0] - 1), np.clip(cols - pad, 0, footprint.shape[1] - 1)
     rows_ok, first_col, last_col = line_limits(padded, 1)
     cols_ok, first_row, last_row = line_limits(padded, 0)
-    range_cols = fold(cols, first_col[:, None], last_col[:, None])
-    range_distance = np.minimum(np.abs(cols - first_col[:, None]), np.abs(cols - last_col[:, None]))
-    azimuth_rows = fold(rows, first_row[None, :], last_row[None, :])
-    azimuth_distance = np.minimum(np.abs(rows - first_row[None, :]), np.abs(rows - last_row[None, :]))
-    use_range = rows_ok[:, None] & (~cols_ok[None, :] | (range_distance <= azimuth_distance))
-    use_azimuth = cols_ok[None, :] & ~use_range
-    source_rows = rows.copy()
-    source_cols = cols.copy()
-    source_cols[use_range] = range_cols[use_range]
-    source_rows[use_azimuth] = azimuth_rows[use_azimuth]
-    corners = ~rows_ok[:, None] & ~cols_ok[None, :]
-    first_ok_col, last_ok_col = np.flatnonzero(cols_ok)[[0, -1]]
-    corner_rows = rows[corners]
-    corner_cols = fold(cols, first_ok_col, last_ok_col)[corners]
-    source_rows[corners] = source_rows[corner_rows, corner_cols]
-    source_cols[corners] = source_cols[corner_rows, corner_cols]
-    source_rows[padded] = rows[padded]
-    source_cols[padded] = cols[padded]
+    r0, r1 = np.flatnonzero(rows_ok)[[0, -1]]
+    c0, c1 = np.flatnonzero(cols_ok)[[0, -1]]
+    rows = fold(rows, r0, r1)
+    cols = fold(cols, c0, c1)
+    inside = padded[rows, cols]
+    range_cols = fold(cols, first_col[rows], last_col[rows])
+    range_distance = np.minimum(np.abs(cols - first_col[rows]), np.abs(cols - last_col[rows]))
+    azimuth_rows = fold(rows, first_row[cols], last_row[cols])
+    azimuth_distance = np.minimum(np.abs(rows - first_row[cols]), np.abs(rows - last_row[cols]))
+    use_range = ~inside & rows_ok[rows] & (~cols_ok[cols] | (range_distance <= azimuth_distance))
+    use_azimuth = ~inside & cols_ok[cols] & ~use_range
+    source_rows = np.where(use_azimuth, azimuth_rows, rows)
+    source_cols = np.where(use_range, range_cols, cols)
     return source_rows - pad, source_cols - pad
 
 
